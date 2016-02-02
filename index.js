@@ -1,5 +1,6 @@
 var spawn = require('child_process').spawn;
 var duplexer = require('duplexer');
+var Q = require('q');
 
 module.exports = function (cmd, args, opts) {
 
@@ -11,10 +12,19 @@ module.exports = function (cmd, args, opts) {
 
     var ps = spawn(cmd, args, opts);
     var dup = duplexer(ps.stdin, ps.stdout);
+    var deferred = Q.defer();
+    var err = '';
+    if (ps.stderr) {
+        ps.stderr.on('data', function (buf) { err += buf });
+    }
 
     ps.on('close', function (code) {
-        if (code === 0) return;
-        dup.emit('error', new Error());
+        if (code === 0) {
+            deferred.resolve(err);
+        }
+        else {
+            deferred.reject(err);
+        }
     });
 
     dup.stdin = ps.stdin;
@@ -22,6 +32,7 @@ module.exports = function (cmd, args, opts) {
     dup.stdout = ps.stdout;
     dup.pid = ps.pid;
     dup.kill = ps.kill.bind(ps);
+    dup.done = deferred.promise;
 
     [ 'exit', 'close' ].forEach(function (name) {
         ps.on(name, dup.emit.bind(dup, name));
