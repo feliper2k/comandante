@@ -2,6 +2,7 @@ var spawn = require('child_process').spawn;
 var duplexer = require('duplexer');
 
 module.exports = function (cmd, args, opts) {
+
     if (Array.isArray(cmd)) {
         opts = args;
         args = cmd.slice(1);
@@ -9,30 +10,18 @@ module.exports = function (cmd, args, opts) {
     }
 
     var ps = spawn(cmd, args, opts);
-    var err = '';
-    if (ps.stderr) {
-        ps.stderr.on('data', function (buf) { err += buf });
-    }
+    var dup = duplexer(ps.stdin, ps.stdout);
 
     ps.on('close', function (code) {
         if (code === 0) return;
-        dup.emit('error', new Error(
-            'non-zero exit code ' + code
-            + (!opts || opts.showCommand !== false
-                ? '\n  while running: ' + cmd + ' ' + args.join(' ')
-                : ''
-            )
-            + '\n\n  ' + err));
+        dup.emit('error', new Error());
     });
-
-    var dup = duplexer(ps.stdin, ps.stdout);
 
     dup.stdin = ps.stdin;
     dup.stderr = ps.stderr;
     dup.stdout = ps.stdout;
     dup.pid = ps.pid;
     dup.kill = ps.kill.bind(ps);
-    dup.errorOutput = err;
 
     [ 'exit', 'close' ].forEach(function (name) {
         ps.on(name, dup.emit.bind(dup, name));
